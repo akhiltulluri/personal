@@ -1,0 +1,96 @@
+baseURL = 'https://tulluri.me/'
+languageCode = 'en-us'
+title = 'Akhil Tulluri'
+theme = 'typo'
+
+# Google analytics code
+googleAnalytics = "G-xxxxxxxxx"
+
+[taxonomies]
+tag = 'tags'
+
+[params]
+# Meta description
+description = "Personal webpage/blog of Akhil Tulluri"
+
+# Appearance settings
+theme = 'auto'
+colorPalette = 'default'
+hideHeader = false
+
+# Intro on main page, content is markdown
+homeIntroTitle = 'Developer, Idealist, Romantic.'
+homeIntroContent = """
+I make software and write about the things that move me — code, love, politics, philosophy and everything in between.
+"""
+
+# Collection to display on home
+homeCollectionTitle = 'Thoughts'
+homeCollection = 'thoughts'
+
+# Lists parameters
+paginationSize = 100
+listSummaries = false
+listDateFormat = '2 Jan 2006'
+
+# Breadcrumbs
+[params.breadcrumbs]
+enabled = true
+showCurrentPage = true
+home = "Home"
+
+# Social icons
+[[params.social]]
+name = "mastodon"
+url = "https://discuss.systems/@akhiltulluri"
+
+[[params.social]]
+name = "bluesky"
+url = "https://bsky.app/profile/akhiltulluri.bsky.social"
+
+[[params.social]]
+name = "github"
+url = "https://github.com/akhiltulluri"
+
+[[params.social]]
+name = "gmail"
+url = "mailto:akhilesh@tulluri.me"
+
+[[params.social]]
+name = "linkedin"
+url = "https://www.linkedin.com/in/akhiltulluri/"
+
+
+[[params.social]]
+name = "twitter"
+url = "https://twitter.com/akhiltulluri_"
+
+
+[[params.social]]
+# Main menu pages
+[[params.menu]]
+name = "home"
+url = "/"
+
+[[params.menu]]
+name = "thoughts"
+url = "/thoughts"
+
+[[params.menu]]
+name = "about"
+url = "/about"
+
+# Syntax highlight on code blocks
+[markup]
+[markup.highlight]
+style = 'algol'
+
+# Giscus comments
+[params.giscus]
+enable = false
+repo = "user/repo"
+repoid = "repoId"
+category = "General"
+categoryid = "categoryId"
+mapping = "pathname"
+theme = "preferred_color_scheme"

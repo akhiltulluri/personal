@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en-us"
+  dir="ltr">
+
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+<link rel="icon" type="image/ico" href="http://localhost:1313/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="http://localhost:1313/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="http://localhost:1313/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="http://localhost:1313/android-chrome-192x192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="http://localhost:1313/apple-touch-icon.png">
+
+<meta name="description" content="Behind the scenes of pipe operator (`|`) and redirects (`&lt;`, `&gt;`) on linux shell."/>
+
+
+
+<title>
+    
+    How does `ls /var/log | grep &#39;.log&#39; | sort &gt; log_files.txt` work? | Akhil Tulluri
+    
+</title>
+
+<link rel="canonical" href="http://localhost:1313/thoughts/shell/"/>
+
+<meta property="og:url" content="http://localhost:1313/thoughts/shell/">
+  <meta property="og:site_name" content="Akhil Tulluri">
+  <meta property="og:title" content="How does `ls /var/log | grep &#39;.log&#39; | sort &gt; log_files.txt` work?">
+  <meta property="og:description" content="Behind the scenes of pipe operator (`|`) and redirects (`&lt;`, `&gt;`) on linux shell.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="thoughts">
+    <meta property="article:published_time" content="2024-11-10T00:00:00+00:00">
+    <meta property="article:modified_time" content="2024-11-10T00:00:00+00:00">
+
+
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/assets/combined.min.92c3bf7119b98cfdc79e93f36a451eb901d8bbbfed7d75814e6436cf6c9085dc.css" media="all">
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+</head>
+
+
+
+
+
+
+
+<body class="auto">
+
+  <div class="content">
+    <header>
+      
+
+<div class="header">
+
+    
+
+    <h1 class="header-title">
+        <a href="http://localhost:1313/">Akhil Tulluri</a>
+    </h1>
+
+    <div class="header-menu">
+        
+
+        
+        
+
+        <p
+            class="small ">
+            <a href="/" >
+                /home
+            </a>
+        </p>
+        
+
+        <p
+            class="small ">
+            <a href="/thoughts" >
+                /thoughts
+            </a>
+        </p>
+        
+
+        <p
+            class="small ">
+            <a href="/about" >
+                /about
+            </a>
+        </p>
+        
+        
+    </div>
+
+    
+
+</div>
+
+    </header>
+
+    <main class="main">
+      
+
+
+
+
+<div class="breadcrumbs"><a href="/">Home</a><span class="breadcrumbs-separator">/</span><a href="/thoughts/">Thoughts</a><span class="breadcrumbs-separator">/</span>
+        <a href="/thoughts/shell/">How does `ls /var/log | grep &#39;.log&#39; | sort &gt; log_files.txt` work?</a></div>
+
+
+<div >
+  <article>
+    <header class="single-intro-container">
+        
+        <h1 class="single-title">How does `ls /var/log | grep &#39;.log&#39; | sort &gt; log_files.txt` work?</h1>
+        
+        <div class="single-subsummary">
+          
+          <div>
+            
+            <p class="single-date">
+              <time datetime="2024-11-10T00:00:00&#43;00:00">November 10, 2024</time>
+            </p>
+          </div>
+        </div>
+        
+    </header>
+    
+    <div class="single-content">
+      <p>Behind the scenes of pipe operator (<code>|</code>) and redirects (<code>&lt;</code>, <code>&gt;</code>) on linux shell.</p>
+<h3 class="heading" id="intro">
+  Intro
+  <a class="anchor" href="#intro">#</a>
+</h3>
+<p>Recently, I was tasked to build a linux shell from scratch as part of an assignment at school. One of the tricky parts of it was implementing support for the pipe operator (<code>|</code>) and redirects (<code>&lt;</code> and <code>&gt;</code>) as it required a careful manipulation of file descriptors. So what actually happens when you type in a complex command like:</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>ls /var/log | grep <span style="color:#666;font-style:italic">&#34;.log&#34;</span> | sort &gt; log_files.txt
+</span></span></code></pre></div><p>The command finds all the files that has &ldquo;.log&rdquo; in its name, sorts them in alphabetical order and puts in a log_files.txt file. The output of <code>ls</code> command is somehow taken as input by <code>grep</code>, and the output of <code>grep</code> is taken as input by <code>sort</code> and the result of sort is sent into an actual file instead of printing it on the screen.</p>
+<p>Now, the interesting part is that all these commands are independent. By that, I mean <code>grep</code> doesn&rsquo;t actually <em>know</em> that it&rsquo;s reading the output of <code>ls</code>. Which means, the input and output layers are manipulated at the operating system level.</p>
+<h3 class="heading" id="everything-is-a-file-in-unix">
+  <a href="https://en.wikipedia.org/wiki/Everything_is_a_file">Everything is a file in Unix</a>
+  <a class="anchor" href="#everything-is-a-file-in-unix">#</a>
+</h3>
+<p>You probably heard of this phrase before. Pipes and redirects leverage this idea to work. That is, things like standard input, standard output, pipes (created using <code>pipe()</code> system call &ndash; a unidirectional communication link b/w two file descriptors), actual files, network connections etc. are all the same thing, a FILE.</p>
+<p>More clearly, system calls like write(), open(), read() etc work with all types of I/O and use the <a href="https://en.wikipedia.org/wiki/File_descriptor#:~:text=In%20Unix%20and%20Unix%2Dlike,a%20pipe%20or%20network%20socket.">file descriptor</a> to identify them. Whenever a file is opened, the OS assigns a file descriptor - which is an index in the &ldquo;file table&rdquo; that the OS maintains per process. By default, the standard input is always 0, the standard output is 1 by the Unix standard. Calls like write, read take in the file descriptor and the OS knows how to do things for that specific type of input/output source.</p>
+<h3 class="heading" id="how-do-file-descriptors-help-in-redirecting-io">
+  How do file descriptors help in redirecting I/O?
+  <a class="anchor" href="#how-do-file-descriptors-help-in-redirecting-io">#</a>
+</h3>
+<p>The <code>ls /var/log</code> command by default reads input from standard input (file descriptor 0) and writes output to standard output (file descriptor 1). For the output of this <code>ls</code> command to be taken as input to another command <code>grep</code> &ndash; all we need to do is manipulate output file descriptor of ls and input file descriptor of grep.</p>
+<p>For this, we would need a pipe to communicate between the two processes (yes, <code>ls</code> and <code>grep</code> run on two different processes created by <code>fork()</code> system call). A pipe is created using the <code>pipe()</code> system call - and it returns two file descriptors: one is a &ldquo;read end&rdquo; of the pipe and the other is a &ldquo;write end&rdquo; of the pipe. If one writes bytes to the write end of the pipe, they can be read from the read end of the pipe. It is important to note that the size of the buffer used by pipe is very small &ndash; which means <code>grep</code> can&rsquo;t wait for <code>ls</code> to finish writing to the pipe but should start reading as soon as something is available (<code>ls</code> and <code>grep</code> run parallel in a way).</p>
+<p>Which means, in the process used for executing <code>ls</code>, the file descriptor 1 should point to a write end of a <code>pipe()</code> instead of standard output and in the process used for executing <code>grep</code> the file descriptor 0 should point to the read end of the pipe.</p>
+<p>Sounds pretty simple in concept. Coding it in C can be little tricky because the use of <code>fork()</code> system call enforces certain structure in the code, and causes duplication of file descriptors that needs closing. If a write end of a pipe is not properly closed after there is nothing more to write, the read end would never stop blocking &ndash; and might result in your shell hanging!</p>
+<h3 class="heading" id="the-dup2-system-call">
+  The <code>dup2</code> system call
+  <a class="anchor" href="#the-dup2-system-call">#</a>
+</h3>
+<p>The manipulation of file descriptors is also very simple, thanks to the <code>dup2</code> system call. It takes in two file descriptors &ndash; duplicates the first one and assigns it the value of second fd. For example, <code>dup2(3, 0)</code> would create a duplicate of file descriptor <code>3</code> and is now referenced by file descriptor <code>0</code>. That is, after doing that dup2 call, fd 0 points to whatever fd 3 points to, and not necessarily standard input anymore.</p>
+<p>For the <code>ls | grep</code> pipeline we&rsquo;ll have:</p>
+<ul>
+<li>parent: <code>pipe</code> -&gt; <code>read_fd</code>, <code>write_fd</code></li>
+<li>child1: <code>dup2(write_fd, 1)</code>, <code>close(write_fd)</code>, <code>close(read_fd)</code></li>
+<li>child2: <code>dup2(read_fd, 0)</code>, <code>close(read_fd)</code>, <code>close(write_fd)</code></li>
+<li>parent: <code>close(read_fd)</code>, <code>close(write_fd)</code></li>
+</ul>
+<p>Here is some sample C code on how <code>ls /var/log | grep &quot;log&quot;</code> would execute:</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="font-weight:bold;text-decoration:underline">int</span> pipe_fd[2];
+</span></span><span style="display:flex;"><span><span style="color:#666;font-weight:bold;font-style:italic">pipe</span>(pipe_fd); <span style="color:#888;font-style:italic">// pipe_fd[0] -&gt; read end, pipe_fd[1] -&gt; write end
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>
+</span></span><span style="display:flex;"><span><span style="font-weight:bold;text-decoration:underline">if</span> (<span style="color:#666;font-weight:bold;font-style:italic">fork</span>() == 0) {
+</span></span><span style="display:flex;"><span>    <span style="color:#888;font-style:italic">/* Child */</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#666;font-weight:bold;font-style:italic">dup2</span>(pipe_fd[1], STDOUT_FILENO); <span style="color:#888;font-style:italic">// printf() would now write to write end of the pipe for example
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>    <span style="color:#666;font-weight:bold;font-style:italic">close</span>(pipe_fd[1]); <span style="color:#888;font-style:italic">// duplicate
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>    <span style="color:#666;font-weight:bold;font-style:italic">close</span>(pipe_fd[0]); <span style="color:#888;font-style:italic">// duplicate in child proc
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>    <span style="color:#666;font-weight:bold;font-style:italic">execvp</span>(<span style="color:#666;font-style:italic">&#34;ls&#34;</span>, (<span style="font-weight:bold;text-decoration:underline">char</span>*[]){<span style="color:#666;font-style:italic">&#34;ls&#34;</span>, <span style="color:#666;font-style:italic">&#34;/var/log&#34;</span>, <span style="font-weight:bold;font-style:italic">NULL</span>}) <span style="color:#888;font-style:italic">// output is written to pipe_fd[1], can be read from pipe_fd[0]
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>} <span style="font-weight:bold;text-decoration:underline">else</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#888;font-style:italic">/* parent */</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="font-weight:bold;text-decoration:underline">if</span> (<span style="color:#666;font-weight:bold;font-style:italic">fork</span>() == 0) {
+</span></span><span style="display:flex;"><span>        <span style="color:#888;font-style:italic">/* second child */</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#666;font-weight:bold;font-style:italic">dup2</span>(pipe_fd[0], STDIN_FILENO); <span style="color:#888;font-style:italic">// fd 0 is now read end of the pipe
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>        <span style="color:#666;font-weight:bold;font-style:italic">close</span>(pipe_fd[0]); <span style="color:#888;font-style:italic">// duplicate
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>        <span style="color:#666;font-weight:bold;font-style:italic">close</span>(pipe_fd[1]); <span style="color:#888;font-style:italic">// duplicate
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>        <span style="color:#666;font-weight:bold;font-style:italic">execvp</span>(<span style="color:#666;font-style:italic">&#34;grep&#34;</span>, (<span style="font-weight:bold;text-decoration:underline">char</span>*[]){<span style="color:#666;font-style:italic">&#34;grep&#34;</span>, <span style="color:#666;font-style:italic">&#34;log&#34;</span>, <span style="font-weight:bold;font-style:italic">NULL</span>}); <span style="color:#888;font-style:italic">// reads input from pipe_fd[0]
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>    } <span style="font-weight:bold;text-decoration:underline">else</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#666;font-weight:bold;font-style:italic">close</span>(pipe_fd[1]); <span style="color:#888;font-style:italic">// close write end from parent
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>        <span style="color:#666;font-weight:bold;font-style:italic">close</span>(pipe_fd[0]); <span style="color:#888;font-style:italic">// close read end from parent
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>        <span style="color:#888;font-style:italic">// waitpid() of all processes to complete
+</span></span></span><span style="display:flex;"><span><span style="color:#888;font-style:italic"></span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h3 class="heading" id="what-about-redirects--and-">
+  What about redirects? (<code>&lt;</code> and <code>&gt;</code>)
+  <a class="anchor" href="#what-about-redirects--and-">#</a>
+</h3>
+<p>They work very similar to pipes &ndash; but instead of using the file descriptros from <code>pipe()</code>, we use the file descriptor returned by <code>open()</code> in the <code>dup2</code> system calls.</p>
+<h3 class="heading" id="conclusion">
+  Conclusion
+  <a class="anchor" href="#conclusion">#</a>
+</h3>
+<p>To wrap it up, the magic behind pipes and redirects in Unix-like systems lies in how everything is treated as a file. Whether it&rsquo;s a standard input/output, a pipe, or a regular file, all these are represented by file descriptors that can be easily manipulated using system calls like dup2. By understanding how file descriptors work, you can see how processes can communicate through pipes or redirect data to/from files, all while keeping the processes independent. This allows for a clean, flexible, and efficient way to manage data flow in the command line.</p>
+
+    </div>
+  </article>
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+  <div class="back-to-top">
+    <a href="#top">
+      back to top
+    </a>
+  </div>
+  
+
+</div>
+
+
+    </main>
+  </div>
+
+  
+  
+
+
+
+
+
+    
+
+
+
+
+  <footer>
+    
+
+    
+    
+
+
+
+
+
+    
+
+
+
+
+    
+    <p>Powered by
+        <a href="https://gohugo.io/">Hugo</a>
+        and
+        <a href="https://github.com/tomfran/typo">tomfran/typo</a>
+    </p>
+    
+    
+    
+
+
+  </footer>
+
+  
+</body>
+
+<script src="/js/theme-switch.js"></script>
+<script defer src="/js/copy-code.js"></script>
+</html>
