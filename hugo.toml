@@ -19,7 +19,7 @@ colorPalette = 'default'
 hideHeader = false
 
 # Intro on main page, content is markdown
-homeIntroTitle = 'Developer, Idealist, Lover.'
+homeIntroTitle = 'Developer, Idealist, Student.'
 homeIntroContent = """
 I make software and write about the things that move me — code, love, politics, philosophy and everything in between.
 """
